@@ -24,6 +24,7 @@ fi
 : "${LGTM_MODEL:="gpt-4"}"
 : "${LGTM_TEMPERATURE:="0.1"}"
 : "${LGTM_TIMEOUT:="15"}"
+: "${LGTM_AUTO_PUSH:="false"}"
 
 # Global variables
 DRY_RUN=false
@@ -31,6 +32,7 @@ AUTO_COMMIT=true
 VERBOSE=false
 INPUT_FROM_STDIN=false
 SILENT=false
+AUTO_PUSH=false
 
 # ANSI color codes
 readonly RED='\033[0;31m'
@@ -70,6 +72,7 @@ Generate conventional commit messages using AI analysis of Git diff output.
 OPTIONS:
     -d, --dry-run                    Preview mode - show what would be done without making changes
     -a, --auto-commit                Automatically commit with generated message (requires -y confirmation)
+    -P, --push                       Automatically push to current branch after successful commit
     -v, --verbose                    Enable verbose output
     -q, --silent                     Suppress all output except the final commit message
     -s, --stdin                      Read git diff from STDIN
@@ -94,6 +97,7 @@ ENVIRONMENT VARIABLES:
     LGTM_MAX_TOKENS        Maximum tokens for response (default: 100)
     LGTM_MAX_CHUNK_SIZE    Maximum characters per chunk (default: 4000)
     LGTM_TIMEOUT          API request timeout in seconds (default: 15)
+    LGTM_AUTO_PUSH         Auto-push after commit (default: false)
     LGTM_IGNORE_PATTERNS   Comma-separated ignore patterns (default: common files)
     LGTM_INCLUDE_EXTENSIONS Comma-separated file extensions to include
 
@@ -108,6 +112,7 @@ IGNORE PATTERN PRIORITY (highest to lowest):
 
 EXAMPLES:
     $0 --dry-run                       # Preview commit message
+    $0 --auto-commit --push            # Auto-commit and push to current branch
     $0 --api-url "http://localhost:11434/v1/chat/completions" --model "llama2"
     $0 --ignore "*.log" --ignore "*.tmp" --include ".js" --include ".ts"
     git diff --cached | $0 -s         # Process specific diff from STDIN
@@ -201,6 +206,7 @@ parse_args() {
         case $1 in
             -d|--dry-run) DRY_RUN=true; shift ;;
             -a|--auto-commit) AUTO_COMMIT=true; shift ;;
+            -P|--push) AUTO_PUSH=true; shift ;;
             -v|--verbose) VERBOSE=true; shift ;;
             -q|--silent) SILENT=true; shift ;;
             -s|--stdin) INPUT_FROM_STDIN=true; shift ;;
@@ -269,6 +275,9 @@ parse_args() {
     [[ -z "$LGTM_MAX_TOKENS" && -n "$cli_max_tokens" ]] && LGTM_MAX_TOKENS="$cli_max_tokens"
     [[ -z "$LGTM_MAX_CHUNK_SIZE" && -n "$cli_max_chunk_size" ]] && LGTM_MAX_CHUNK_SIZE="$cli_max_chunk_size"
     [[ -z "$LGTM_TIMEOUT" && -n "$cli_timeout" ]] && LGTM_TIMEOUT="$cli_timeout"
+    
+    # Apply push setting - environment variable takes precedence over CLI flag
+    [[ "$LGTM_AUTO_PUSH" == "true" ]] && AUTO_PUSH=true
 }
 
 # Validate requirements
@@ -553,6 +562,40 @@ generate_commit_message() {
     fi
 }
 
+# Push to current branch
+push_to_current_branch() {
+    print_verbose "Attempting to push to current branch..."
+    
+    # Get current branch name
+    local current_branch
+    current_branch=$(git branch --show-current 2>/dev/null)
+    
+    if [[ -z "$current_branch" ]]; then
+        print_error "Could not determine current branch for push"
+        return 1
+    fi
+    
+    print_verbose "Current branch: $current_branch"
+    
+    # Check if remote exists
+    local remote_url
+    remote_url=$(git config --get "branch.$current_branch.remote" 2>/dev/null || echo "origin")
+    
+    if ! git remote get-url "$remote_url" >/dev/null 2>&1; then
+        print_error "Remote '$remote_url' not found. Cannot push."
+        return 1
+    fi
+    
+    print_info "Pushing to $remote_url/$current_branch..."
+    
+    if git push "$remote_url" "$current_branch"; then
+        print_success "Successfully pushed to $remote_url/$current_branch"
+        return 0
+    else
+        print_error "Failed to push to $remote_url/$current_branch"
+        return 1
+    fi
+}
 # Handle commit action based on mode
 handle_commit() {
     local commit_message="$1"
@@ -563,11 +606,25 @@ handle_commit() {
             echo "$commit_message" ;;
         "falsetrue")
             print_info "Generated commit message: $commit_message"
-            print_warning "About to commit with this message. Continue? (y/N)"
+            if [[ "$AUTO_PUSH" == "true" ]]; then
+                print_warning "About to commit and push with this message. Continue? (y/N)"
+            else
+                print_warning "About to commit with this message. Continue? (y/N)"
+            fi
             read -r response
             if [[ "$response" =~ ^[Yy]$ ]]; then
                 if git commit -m "$commit_message"; then
                     print_success "Successfully committed with message: $commit_message"
+                    
+                    # Push if auto-push is enabled
+                    if [[ "$AUTO_PUSH" == "true" ]]; then
+                        if push_to_current_branch; then
+                            print_success "Commit and push completed successfully"
+                        else
+                            print_error "Commit succeeded but push failed"
+                            exit 1
+                        fi
+                    fi
                 else
                     print_error "Failed to commit"
                     exit 1

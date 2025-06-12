@@ -92,6 +92,7 @@ Generate conventional commit messages using AI analysis of Git diff output.
 OPTIONS:
     -d, --dry-run       Preview mode - show what would be done without making changes
     -a, --auto-commit   Automatically commit with generated message (requires confirmation)
+    -P, --push          Automatically push to current branch after successful commit
     -v, --verbose       Enable verbose output for debugging
     -q, --silent        Suppress all output except the final commit message
     -s, --stdin         Read git diff output from STDIN
@@ -113,6 +114,9 @@ OPTIONS:
 
 # Auto-commit with confirmation prompt
 ./lgtm.sh --auto-commit
+
+# Auto-commit and push to current branch
+./lgtm.sh --auto-commit --push
 
 # Verbose output for debugging
 ./lgtm.sh --verbose --dry-run
@@ -182,6 +186,7 @@ All configuration is handled through environment variables, following the UNIX p
 | `LGTM_MAX_TOKENS`         | Maximum tokens for AI response    | `100`     |
 | `LGTM_MODEL`              | AI model to use                   | `gpt-4`   |
 | `LGTM_TEMPERATURE`        | Model creativity (0.0-2.0)        | `0.3`     |
+| `LGTM_AUTO_PUSH`          | Auto-push after commit            | `false`   |
 | `LGTM_IGNORE_PATTERNS`    | Comma-separated ignore patterns   | See below |
 | `LGTM_INCLUDE_EXTENSIONS` | File extensions to analyze        | See below |
 
@@ -283,6 +288,10 @@ export LGTM_IGNORE_PATTERNS="*.pyc,__pycache__/*,*.log"
 # Large diff handling
 export LGTM_MAX_CHUNK_SIZE=8000
 export LGTM_MAX_TOKENS=200
+
+# Auto-push configuration
+export LGTM_AUTO_PUSH=true
+./lgtm.sh --auto-commit  # Will commit and push automatically
 ```
 
 ### .lgtmignore Configuration Examples
@@ -352,6 +361,13 @@ git add .
 git commit -m "$(./lgtm.sh --silent)"
 
 # Or use auto-commit mode
+./lgtm.sh --auto-commit
+
+# Auto-commit and push in one step
+./lgtm.sh --auto-commit --push
+
+# Environment-based auto-push
+export LGTM_AUTO_PUSH=true
 ./lgtm.sh --auto-commit
 ```
 

@@ -64,22 +64,31 @@ flowchart TD
     NN -->|No| PP[Cancel Commit]
 
     OO --> QQ{Commit Success?}
-    QQ -->|Yes| RR[Success: Changes Committed]
+    QQ -->|Yes| RR{Auto-Push Enabled?}
     QQ -->|No| SS[Error: Commit Failed]
 
-    KK --> TT[End: Preview Complete]
-    MM --> UU[End: Message Available for Other Tools]
-    RR --> VV[End: Auto-commit Complete]
-    PP --> WW[End: Commit Cancelled]
+    RR -->|Yes| TT[Push to Current Branch]
+    RR -->|No| UU[Success: Changes Committed]
+
+    TT --> VV{Push Success?}
+    VV -->|Yes| WW[Success: Committed & Pushed]
+    VV -->|No| XX[Error: Push Failed]
+
+    KK --> YY[End: Preview Complete]
+    MM --> ZZ[End: Message Available for Other Tools]
+    UU --> AAA[End: Auto-commit Complete]
+    WW --> BBB[End: Commit & Push Complete]
+    PP --> CCC[End: Commit Cancelled]
 
     %% Error paths
-    D --> XX[End: Error Exit]
-    G --> XX
-    I --> XX
-    K --> XX
-    X --> XX
-    GG --> XX
-    SS --> XX
+    D --> DDD[End: Error Exit]
+    G --> DDD
+    I --> DDD
+    K --> DDD
+    X --> DDD
+    GG --> DDD
+    SS --> DDD
+    XX --> DDD
 
     %% Styling
     classDef startEnd fill:#e1f5fe,stroke:#01579b,stroke-width:2px
@@ -88,11 +97,11 @@ flowchart TD
     classDef error fill:#ffebee,stroke:#c62828,stroke-width:2px
     classDef success fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
 
-    class A,TT,UU,VV,WW startEnd
-    class B,E,L,U,V,Y,DD,EE,HH,II,OO process
-    class C,F,H,J,M,P,R,W,Z,FF,JJ,NN,QQ decision
-    class D,G,I,K,X,GG,SS,XX error
-    class RR success
+    class A,YY,ZZ,AAA,BBB,CCC startEnd
+    class B,E,L,U,V,Y,DD,EE,HH,II,OO,TT process
+    class C,F,H,J,M,P,R,W,Z,FF,JJ,NN,QQ,RR,VV decision
+    class D,G,I,K,X,GG,SS,XX,DDD error
+    class UU,WW success
 ```
 
 ## Workflow Description
@@ -134,6 +143,7 @@ The `lgtm.sh` script follows a systematic approach to generate conventional comm
 
 - **Dry-run mode**: Previews generated message without changes
 - **Auto-commit mode**: Prompts for confirmation before committing
+- **Auto-push mode**: Automatically pushes to current branch after successful commit
 - **Normal mode**: Outputs message to STDOUT for use by other tools
 - Maintains UNIX philosophy by providing clean, pipeable output
 
@@ -145,3 +155,4 @@ The `lgtm.sh` script follows a systematic approach to generate conventional comm
 - **Flexible**: Multiple input/output modes for different workflows
 - **Standards-compliant**: Generates conventional commit messages
 - **Smart Filtering**: Multi-source ignore pattern support with .lgtmignore integration
+- **Git Integration**: Auto-commit and auto-push functionality for streamlined workflows
