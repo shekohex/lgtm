@@ -425,6 +425,28 @@ get_git_diff() {
     fi
     
     if [[ -z "$diff_output" ]]; then
+        # Check if there are any files that could be staged
+        local stageable_files
+        stageable_files=$(git diff --name-only)
+        
+        if [[ -n "$stageable_files" ]]; then
+            print_warning "No staged changes found, but there are files that could be staged:"
+            echo "$stageable_files"
+            print_warning "Would you like to stage these files? (y/N)"
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                if git add .; then
+                    print_info "Files staged successfully"
+                    # Try to get the diff again, now with staged files
+                    diff_output=$(git diff --cached --no-ext-diff -M -C -B --color=never 2>/dev/null || true)
+                    if [[ -n "$diff_output" ]]; then
+                        return 0
+                    fi
+                else
+                    print_error "Failed to stage files"
+                fi
+            fi
+        fi
         print_warning "No git diff output found"
         return 1
     fi
