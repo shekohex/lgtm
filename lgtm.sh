@@ -395,12 +395,18 @@ get_git_diff() {
         if ! git diff --cached --quiet 2>/dev/null; then
             diff_output=$(git -c core.pager=cat diff --cached --no-ext-diff 2>/dev/null || true)
             print_verbose "Using staged changes"
+            print_verbose "Staged changes size: ${#diff_output} characters"
+            print_verbose "Staged changes content: $(echo "$diff_output")" 
         elif ! git diff --quiet 2>/dev/null; then
             diff_output=$(git -c core.pager=cat diff --no-ext-diff 2>/dev/null || true)
             print_verbose "Using unstaged changes"
+            print_verbose "Unstaged changes size: ${#diff_output} characters"
+            print_verbose "Unstaged changes content: $(echo "$diff_output")"
         else
             diff_output=$(git -c core.pager=cat diff HEAD~1 --no-ext-diff 2>/dev/null || git -c core.pager=cat show HEAD --format="" --no-ext-diff 2>/dev/null || true)
             print_verbose "Using last commit changes"
+            print_verbose "Last commit changes size: ${#diff_output} characters"
+            print_verbose "Last commit changes content: $(echo "$diff_output")"
         fi
     fi
     
