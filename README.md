@@ -187,7 +187,8 @@ All configuration is handled through environment variables, following the UNIX p
 | `LGTM_MAX_INPUT_TOKENS`   | Maximum tokens for AI input       | `8000`    |
 | `LGTM_MAX_TOKENS`         | Maximum tokens for AI response    | `100`     |
 | `LGTM_MODEL`              | AI model to use                   | `gpt-4`   |
-| `LGTM_TEMPERATURE`        | Model creativity (0.0-2.0)        | `0.3`     |
+| `LGTM_TEMPERATURE`        | Model creativity (0.0-2.0)        | `0.1`     |
+| `LGTM_TOP_P`              | Top-p sampling value (0.0-1.0)    | `0.25`    |
 | `LGTM_AUTO_PUSH`          | Auto-push after commit            | `false`   |
 | `LGTM_IGNORE_PATTERNS`    | Comma-separated ignore patterns   | See below |
 | `LGTM_INCLUDE_EXTENSIONS` | File extensions to analyze        | See below |
@@ -270,6 +271,7 @@ LGTM_INCLUDE_EXTENSIONS=".js,.ts,.py,.go,.rs,.java,.cpp,.c,.h,.php,.rb,.sh,.bash
 export LGTM_API_URL="https://api.openai.com/v1/chat/completions"
 export LGTM_API_KEY="sk-your-key-here"
 export LGTM_MODEL="gpt-4"
+export LGTM_TOP_P="0.25"
 
 # Anthropic Claude Configuration
 export LGTM_API_URL="https://api.anthropic.com/v1/messages"

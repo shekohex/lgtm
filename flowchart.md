@@ -135,13 +135,16 @@ The `lgtm.sh` script follows a systematic approach to generate conventional comm
 - Filters by included file extensions (e.g., `.js`, `.py`, `.go`)
 - Smart chunking logic:
   - Checks content against `LGTM_MAX_CHUNK_SIZE` character limit
+  - Uses model parameters: temperature and top-p (nucleus sampling)
   - Estimates token count and compares against `LGTM_MAX_INPUT_TOKENS`
   - Only chunks content when either limit is exceeded
   - Uses first chunk for large diffs while maintaining context
 
 ### 4. **AI API Integration**
 
-- Sends processed diff chunks to configured AI model via CURL
+- Sends processed diff chunks to configured AI model via CURL with sampling parameters:
+  - Temperature (`LGTM_TEMPERATURE`): Controls randomness
+  - Top-p (`LGTM_TOP_P`): Nucleus sampling for focused yet diverse responses
 - Uses structured prompts for conventional commit format generation
 - Handles API responses and error conditions
 

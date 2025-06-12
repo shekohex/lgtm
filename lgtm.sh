@@ -24,6 +24,7 @@ fi
 : "${LGTM_INCLUDE_EXTENSIONS:=".js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.cpp,.c,.h,.php,.rb,.sh,.bash,.zsh"}"
 : "${LGTM_MODEL:="gpt-4"}"
 : "${LGTM_TEMPERATURE:="0.1"}"
+: "${LGTM_TOP_P:="0.25"}"
 : "${LGTM_TIMEOUT:="15"}"
 : "${LGTM_AUTO_PUSH:="false"}"
 
@@ -82,6 +83,7 @@ OPTIONS:
     --api-url URL                    API endpoint URL (can be overridden by LGTM_API_URL)
     --model MODEL                    AI model to use (can be overridden by LGTM_MODEL)
     --temperature TEMP               Model temperature 0.0-2.0 (can be overridden by LGTM_TEMPERATURE)
+    --top-p VALUE                   Top-p (nucleus) sampling parameter 0.0-1.0 (can be overridden by LGTM_TOP_P)
     -t, --max-tokens NUM             Maximum tokens for response (can be overridden by LGTM_MAX_TOKENS)
     --max-input-tokens NUM           Maximum tokens for input (can be overridden by LGTM_MAX_INPUT_TOKENS)
     --max-chunk-size NUM             Maximum characters per chunk (can be overridden by LGTM_MAX_CHUNK_SIZE)
@@ -96,6 +98,7 @@ ENVIRONMENT VARIABLES:
     LGTM_API_KEY           API authentication key (required)
     LGTM_MODEL             AI model to use (default: gpt-4)
     LGTM_TEMPERATURE       Model temperature (default: 0.1)
+    LGTM_TOP_P            Top-p sampling parameter (default: 0.25)
     LGTM_MAX_TOKENS        Maximum tokens for response (default: 100)
     LGTM_MAX_INPUT_TOKENS  Maximum tokens for input (default: 8000)
     LGTM_MAX_CHUNK_SIZE    Maximum characters per chunk (default: 4000)
@@ -199,7 +202,7 @@ aggregate_patterns() {
 # Parse command line arguments
 parse_args() {
     # Initialize CLI argument variables
-    local cli_api_url="" cli_model="" cli_temperature="" cli_max_tokens="" cli_max_input_tokens="" cli_max_chunk_size="" cli_timeout=""
+    local cli_api_url="" cli_model="" cli_temperature="" cli_top_p="" cli_max_tokens="" cli_max_input_tokens="" cli_max_chunk_size="" cli_timeout=""
     local cli_ignore_patterns
     local cli_include_extensions
     cli_ignore_patterns=()
@@ -224,6 +227,9 @@ parse_args() {
             --temperature)
                 validate_option "$1" "$2" "float"
                 cli_temperature="$2"; shift 2 ;;
+            --top-p)
+                validate_option "$1" "$2" "float"
+                cli_top_p="$2"; shift 2 ;;
             -t|--max-tokens)
                 validate_option "$1" "$2" "numeric"
                 cli_max_tokens="$2"; shift 2 ;;
@@ -278,6 +284,7 @@ parse_args() {
     [[ -z "$LGTM_API_URL" && -n "$cli_api_url" ]] && LGTM_API_URL="$cli_api_url"
     [[ -z "$LGTM_MODEL" && -n "$cli_model" ]] && LGTM_MODEL="$cli_model"
     [[ -z "$LGTM_TEMPERATURE" && -n "$cli_temperature" ]] && LGTM_TEMPERATURE="$cli_temperature"
+    [[ -z "$LGTM_TOP_P" && -n "$cli_top_p" ]] && LGTM_TOP_P="$cli_top_p"
     [[ -z "$LGTM_MAX_TOKENS" && -n "$cli_max_tokens" ]] && LGTM_MAX_TOKENS="$cli_max_tokens"
     [[ -z "$LGTM_MAX_INPUT_TOKENS" && -n "$cli_max_input_tokens" ]] && LGTM_MAX_INPUT_TOKENS="$cli_max_input_tokens"
     [[ -z "$LGTM_MAX_CHUNK_SIZE" && -n "$cli_max_chunk_size" ]] && LGTM_MAX_CHUNK_SIZE="$cli_max_chunk_size"
@@ -480,6 +487,7 @@ Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
         --arg system_msg "$system_message" \
         --arg user_msg "$content" \
         --argjson temperature "$LGTM_TEMPERATURE" \
+        --argjson top_p "$LGTM_TOP_P" \
         --argjson max_tokens "$LGTM_MAX_TOKENS" \
         '{
             model: $model,
@@ -488,12 +496,14 @@ Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
                 {role: "user", content: $user_msg}
             ],
             temperature: $temperature,
+            top_p: $top_p,
             max_tokens: $max_tokens
         }')
     
     print_verbose "API Request URL: $LGTM_API_URL"
     print_verbose "API Request Model: $LGTM_MODEL"
     print_verbose "API Request Temperature: $LGTM_TEMPERATURE"
+    print_verbose "API Request Top-p: $LGTM_TOP_P"
     print_verbose "API Request Max Output Tokens: $LGTM_MAX_TOKENS"
     print_verbose "API Request Max Input Tokens: $LGTM_MAX_INPUT_TOKENS"
     print_verbose "API Request Timeout: ${LGTM_TIMEOUT}s"
