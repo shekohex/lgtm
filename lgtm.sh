@@ -27,7 +27,7 @@ fi
 
 # Global variables
 DRY_RUN=false
-AUTO_COMMIT=false
+AUTO_COMMIT=true
 VERBOSE=false
 INPUT_FROM_STDIN=false
 SILENT=false
@@ -108,7 +108,6 @@ IGNORE PATTERN PRIORITY (highest to lowest):
 
 EXAMPLES:
     $0 --dry-run                       # Preview commit message
-    $0 --auto-commit                   # Generate and commit automatically
     $0 --api-url "http://localhost:11434/v1/chat/completions" --model "llama2"
     $0 --ignore "*.log" --ignore "*.tmp" --include ".js" --include ".ts"
     git diff --cached | $0 -s         # Process specific diff from STDIN
