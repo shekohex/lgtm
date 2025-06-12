@@ -3,7 +3,7 @@
 # lgtm.sh - Universal Git commit message generator using AI
 # Compatible with Linux and macOS
 
-set -euo pipefail
+set -uo pipefail
 
 # Load environment files if they exist
 if [[ -f ".env.local" ]]; then
@@ -23,6 +23,7 @@ fi
 : "${LGTM_INCLUDE_EXTENSIONS:=".js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.cpp,.c,.h,.php,.rb,.sh,.bash,.zsh"}"
 : "${LGTM_MODEL:="gpt-4"}"
 : "${LGTM_TEMPERATURE:="0.1"}"
+: "${LGTM_TIMEOUT:="15"}"
 
 # Global variables
 DRY_RUN=false
@@ -79,6 +80,7 @@ OPTIONS:
     --temperature TEMP               Model temperature 0.0-2.0 (can be overridden by LGTM_TEMPERATURE)
     -t, --max-tokens NUM             Maximum tokens for response (can be overridden by LGTM_MAX_TOKENS)
     --max-chunk-size NUM             Maximum characters per chunk (can be overridden by LGTM_MAX_CHUNK_SIZE)
+    --timeout SECONDS                API request timeout in seconds (can be overridden by LGTM_TIMEOUT)
     --ignore PATTERNS                Ignore patterns (can be specified multiple times, merged with .lgtmignore and .gitignore)
     --ignore-patterns PATTERNS       Comma-separated ignore patterns (can be overridden by LGTM_IGNORE_PATTERNS)
     --include EXTS                   Include file extensions (can be specified multiple times)
@@ -91,6 +93,7 @@ ENVIRONMENT VARIABLES:
     LGTM_TEMPERATURE       Model temperature (default: 0.1)
     LGTM_MAX_TOKENS        Maximum tokens for response (default: 100)
     LGTM_MAX_CHUNK_SIZE    Maximum characters per chunk (default: 4000)
+    LGTM_TIMEOUT          API request timeout in seconds (default: 15)
     LGTM_IGNORE_PATTERNS   Comma-separated ignore patterns (default: common files)
     LGTM_INCLUDE_EXTENSIONS Comma-separated file extensions to include
 
@@ -146,7 +149,7 @@ read_ignore_patterns() {
 validate_option() {
     local option="$1"
     local value="$2"
-    local validation_type="$3"
+    local validation_type="${3:-}"
     
     if [[ -z "$value" ]]; then
         print_error "Option $option requires a value"
@@ -189,7 +192,7 @@ aggregate_patterns() {
 # Parse command line arguments
 parse_args() {
     # Initialize CLI argument variables
-    local cli_api_url="" cli_model="" cli_temperature="" cli_max_tokens="" cli_max_chunk_size=""
+    local cli_api_url="" cli_model="" cli_temperature="" cli_max_tokens="" cli_max_chunk_size="" cli_timeout=""
     local cli_ignore_patterns
     local cli_include_extensions
     cli_ignore_patterns=()
@@ -219,6 +222,9 @@ parse_args() {
             --max-chunk-size)
                 validate_option "$1" "$2" "numeric"
                 cli_max_chunk_size="$2"; shift 2 ;;
+            --timeout)
+                validate_option "$1" "$2" "numeric"
+                cli_timeout="$2"; shift 2 ;;
             --ignore|--ignore-patterns)
                 validate_option "$1" "$2"
                 cli_ignore_patterns+=("$2"); shift 2 ;;
@@ -263,6 +269,7 @@ parse_args() {
     [[ -z "$LGTM_TEMPERATURE" && -n "$cli_temperature" ]] && LGTM_TEMPERATURE="$cli_temperature"
     [[ -z "$LGTM_MAX_TOKENS" && -n "$cli_max_tokens" ]] && LGTM_MAX_TOKENS="$cli_max_tokens"
     [[ -z "$LGTM_MAX_CHUNK_SIZE" && -n "$cli_max_chunk_size" ]] && LGTM_MAX_CHUNK_SIZE="$cli_max_chunk_size"
+    [[ -z "$LGTM_TIMEOUT" && -n "$cli_timeout" ]] && LGTM_TIMEOUT="$cli_timeout"
 }
 
 # Validate requirements
@@ -378,13 +385,13 @@ get_git_diff() {
     else
         # Priority: staged > unstaged > last commit
         if ! git diff --cached --quiet 2>/dev/null; then
-            diff_output=$(git diff --cached 2>/dev/null || true)
+            diff_output=$(git -c core.pager=cat diff --cached --no-ext-diff 2>/dev/null || true)
             print_verbose "Using staged changes"
         elif ! git diff --quiet 2>/dev/null; then
-            diff_output=$(git diff 2>/dev/null || true)
+            diff_output=$(git -c core.pager=cat diff --no-ext-diff 2>/dev/null || true)
             print_verbose "Using unstaged changes"
         else
-            diff_output=$(git diff HEAD~1 2>/dev/null || git show HEAD --format="" 2>/dev/null || true)
+            diff_output=$(git -c core.pager=cat diff HEAD~1 --no-ext-diff 2>/dev/null || git -c core.pager=cat show HEAD --format="" --no-ext-diff 2>/dev/null || true)
             print_verbose "Using last commit changes"
         fi
     fi
@@ -439,30 +446,54 @@ Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
     
     print_verbose "Calling AI API..."
     
+    # Prepare JSON payload
+    local json_payload
+    json_payload=$(jq -n \
+        --arg model "$LGTM_MODEL" \
+        --arg system_msg "$system_message" \
+        --arg user_msg "$content" \
+        --argjson temperature "$LGTM_TEMPERATURE" \
+        --argjson max_tokens "$LGTM_MAX_TOKENS" \
+        '{
+            model: $model,
+            messages: [
+                {role: "system", content: $system_msg},
+                {role: "user", content: $user_msg}
+            ],
+            temperature: $temperature,
+            max_tokens: $max_tokens
+        }')
+    
+    print_verbose "API Request URL: $LGTM_API_URL"
+    print_verbose "API Request Model: $LGTM_MODEL"
+    print_verbose "API Request Temperature: $LGTM_TEMPERATURE"
+    print_verbose "API Request Max Tokens: $LGTM_MAX_TOKENS"
+    print_verbose "API Request Timeout: ${LGTM_TIMEOUT}s"
+    print_verbose "API Request Content Length: ${#content} characters"
+    
     # Make API call with proper system/user message structure
     http_code=$(curl -s -w "%{http_code}" \
+        --max-time "$LGTM_TIMEOUT" \
+        --connect-timeout "$LGTM_TIMEOUT" \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $LGTM_API_KEY" \
-        -d "{
-            \"model\": \"$LGTM_MODEL\",
-            \"messages\": [
-                {\"role\": \"system\", \"content\": $(printf '%s' "$system_message" | jq -R .)},
-                {\"role\": \"user\", \"content\": $(printf '%s' "$content" | jq -R .)}
-            ],
-            \"temperature\": $LGTM_TEMPERATURE,
-            \"max_tokens\": $LGTM_MAX_TOKENS
-        }" \
+        -d "$json_payload" \
         -o "$temp_response" \
         -D "$temp_header" \
         "$LGTM_API_URL")
     
+    print_verbose "API Response HTTP Code: $http_code"
+    
     if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        print_verbose "API Response Body: $(cat "$temp_response")"
         # Extract message from response (adjust based on API format)
         response=$(jq -r '.choices[0].message.content // .message // .text // .' "$temp_response" 2>/dev/null | head -1)
+        print_verbose "Extracted commit message: $response"
         echo "$response"
     else
         print_error "API call failed with HTTP code: $http_code"
-        print_verbose "Response: $(cat "$temp_response")"
+        print_verbose "Error Response Headers: $(cat "$temp_header")"
+        print_verbose "Error Response Body: $(cat "$temp_response")"
         rm -f "$temp_response" "$temp_header"
         return 1
     fi
@@ -573,3 +604,4 @@ main() {
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"
 fi
+# Test comment
