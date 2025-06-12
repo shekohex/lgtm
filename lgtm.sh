@@ -18,6 +18,7 @@ fi
 : "${LGTM_API_URL:=""}"
 : "${LGTM_API_KEY:=""}"
 : "${LGTM_MAX_CHUNK_SIZE:=4000}"
+: "${LGTM_MAX_INPUT_TOKENS:=8000}"
 : "${LGTM_MAX_TOKENS:=100}"
 : "${LGTM_IGNORE_PATTERNS:="*.log,*.tmp,node_modules/*,*.min.js,*.map,*.lock,*.md,*.txt,*.json,.toml,*.yaml,*.yml,*.xml,*.csv"}"
 : "${LGTM_INCLUDE_EXTENSIONS:=".js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.cpp,.c,.h,.php,.rb,.sh,.bash,.zsh"}"
@@ -82,6 +83,7 @@ OPTIONS:
     --model MODEL                    AI model to use (can be overridden by LGTM_MODEL)
     --temperature TEMP               Model temperature 0.0-2.0 (can be overridden by LGTM_TEMPERATURE)
     -t, --max-tokens NUM             Maximum tokens for response (can be overridden by LGTM_MAX_TOKENS)
+    --max-input-tokens NUM           Maximum tokens for input (can be overridden by LGTM_MAX_INPUT_TOKENS)
     --max-chunk-size NUM             Maximum characters per chunk (can be overridden by LGTM_MAX_CHUNK_SIZE)
     --timeout SECONDS                API request timeout in seconds (can be overridden by LGTM_TIMEOUT)
     --ignore PATTERNS                Ignore patterns (can be specified multiple times, merged with .lgtmignore and .gitignore)
@@ -95,6 +97,7 @@ ENVIRONMENT VARIABLES:
     LGTM_MODEL             AI model to use (default: gpt-4)
     LGTM_TEMPERATURE       Model temperature (default: 0.1)
     LGTM_MAX_TOKENS        Maximum tokens for response (default: 100)
+    LGTM_MAX_INPUT_TOKENS  Maximum tokens for input (default: 8000)
     LGTM_MAX_CHUNK_SIZE    Maximum characters per chunk (default: 4000)
     LGTM_TIMEOUT          API request timeout in seconds (default: 15)
     LGTM_AUTO_PUSH         Auto-push after commit (default: false)
@@ -196,7 +199,7 @@ aggregate_patterns() {
 # Parse command line arguments
 parse_args() {
     # Initialize CLI argument variables
-    local cli_api_url="" cli_model="" cli_temperature="" cli_max_tokens="" cli_max_chunk_size="" cli_timeout=""
+    local cli_api_url="" cli_model="" cli_temperature="" cli_max_tokens="" cli_max_input_tokens="" cli_max_chunk_size="" cli_timeout=""
     local cli_ignore_patterns
     local cli_include_extensions
     cli_ignore_patterns=()
@@ -224,6 +227,9 @@ parse_args() {
             -t|--max-tokens)
                 validate_option "$1" "$2" "numeric"
                 cli_max_tokens="$2"; shift 2 ;;
+            --max-input-tokens)
+                validate_option "$1" "$2" "numeric"
+                cli_max_input_tokens="$2"; shift 2 ;;
             --max-chunk-size)
                 validate_option "$1" "$2" "numeric"
                 cli_max_chunk_size="$2"; shift 2 ;;
@@ -273,6 +279,7 @@ parse_args() {
     [[ -z "$LGTM_MODEL" && -n "$cli_model" ]] && LGTM_MODEL="$cli_model"
     [[ -z "$LGTM_TEMPERATURE" && -n "$cli_temperature" ]] && LGTM_TEMPERATURE="$cli_temperature"
     [[ -z "$LGTM_MAX_TOKENS" && -n "$cli_max_tokens" ]] && LGTM_MAX_TOKENS="$cli_max_tokens"
+    [[ -z "$LGTM_MAX_INPUT_TOKENS" && -n "$cli_max_input_tokens" ]] && LGTM_MAX_INPUT_TOKENS="$cli_max_input_tokens"
     [[ -z "$LGTM_MAX_CHUNK_SIZE" && -n "$cli_max_chunk_size" ]] && LGTM_MAX_CHUNK_SIZE="$cli_max_chunk_size"
     [[ -z "$LGTM_TIMEOUT" && -n "$cli_timeout" ]] && LGTM_TIMEOUT="$cli_timeout"
     
@@ -393,17 +400,17 @@ get_git_diff() {
     else
         # Priority: staged > unstaged > last commit
         if ! git diff --cached --quiet 2>/dev/null; then
-            diff_output=$(git -c core.pager=cat diff --cached --no-ext-diff 2>/dev/null || true)
+            diff_output=$(git diff --cached --no-ext-diff -M -C -B --color=never 2>/dev/null || true)
             print_verbose "Using staged changes"
             print_verbose "Staged changes size: ${#diff_output} characters"
             print_verbose "Staged changes content: $(echo "$diff_output")" 
         elif ! git diff --quiet 2>/dev/null; then
-            diff_output=$(git -c core.pager=cat diff --no-ext-diff 2>/dev/null || true)
+            diff_output=$(git diff --no-ext-diff -M -C -B --color=never 2>/dev/null || true)
             print_verbose "Using unstaged changes"
             print_verbose "Unstaged changes size: ${#diff_output} characters"
             print_verbose "Unstaged changes content: $(echo "$diff_output")"
         else
-            diff_output=$(git -c core.pager=cat diff HEAD~1 --no-ext-diff 2>/dev/null || git -c core.pager=cat show HEAD --format="" --no-ext-diff 2>/dev/null || true)
+            diff_output=$(git diff --no-ext-diff -M -C -B --color=never HEAD~1 2>/dev/null || git -c core.pager=cat show HEAD --format="" --no-ext-diff 2>/dev/null || true)
             print_verbose "Using last commit changes"
             print_verbose "Last commit changes size: ${#diff_output} characters"
             print_verbose "Last commit changes content: $(echo "$diff_output")"
@@ -416,6 +423,12 @@ get_git_diff() {
     fi
     
     echo "$diff_output"
+}
+
+# Estimate token count (rough approximation: 1 token ≈ 4 characters)
+estimate_token_count() {
+    local content="$1"
+    echo $(( ${#content} / 4 ))
 }
 
 # Split content into chunks
@@ -481,9 +494,11 @@ Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
     print_verbose "API Request URL: $LGTM_API_URL"
     print_verbose "API Request Model: $LGTM_MODEL"
     print_verbose "API Request Temperature: $LGTM_TEMPERATURE"
-    print_verbose "API Request Max Tokens: $LGTM_MAX_TOKENS"
+    print_verbose "API Request Max Output Tokens: $LGTM_MAX_TOKENS"
+    print_verbose "API Request Max Input Tokens: $LGTM_MAX_INPUT_TOKENS"
     print_verbose "API Request Timeout: ${LGTM_TIMEOUT}s"
     print_verbose "API Request Content Length: ${#content} characters"
+    print_verbose "API Request Estimated Input Tokens: $(estimate_token_count "$content")"
     
     # Make API call with proper system/user message structure
     http_code=$(curl -s -w "%{http_code}" \
@@ -541,19 +556,27 @@ generate_commit_message() {
     
     print_verbose "Filtered diff size: ${#filtered_diff} characters"
     
-    # Split content into chunks if needed
-    local chunks=()
-    while IFS= read -r chunk; do
-        [[ -n "$chunk" ]] && chunks+=("$chunk")
-    done < <(split_into_chunks "$filtered_diff")
-    
-    print_verbose "Generated ${#chunks[@]} chunks"
-    
-    # For simplicity, use the first chunk or combine if small enough
+    # Check if content needs chunking based on size and token limits
     local content_to_send="$filtered_diff"
-    if [[ ${#filtered_diff} -gt $LGTM_MAX_CHUNK_SIZE ]]; then
+    local estimated_tokens=$(estimate_token_count "$filtered_diff")
+    
+    print_verbose "Estimated tokens: $estimated_tokens (limit: $LGTM_MAX_INPUT_TOKENS)"
+    print_verbose "Content size: ${#filtered_diff} characters (chunk limit: $LGTM_MAX_CHUNK_SIZE)"
+    
+    # Only chunk if content exceeds limits
+    if [[ ${#filtered_diff} -gt $LGTM_MAX_CHUNK_SIZE ]] || [[ $estimated_tokens -gt $LGTM_MAX_INPUT_TOKENS ]]; then
+        print_verbose "Content exceeds limits, chunking required"
+        
+        local chunks=()
+        while IFS= read -r chunk; do
+            [[ -n "$chunk" ]] && chunks+=("$chunk")
+        done < <(split_into_chunks "$filtered_diff")
+        
+        print_verbose "Generated ${#chunks[@]} chunks"
         content_to_send="${chunks[0]}"
-        print_verbose "Using first chunk due to size limit"
+        print_verbose "Using first chunk due to size/token limit"
+    else
+        print_verbose "Content within limits, no chunking needed"
     fi
     
     # Call AI API

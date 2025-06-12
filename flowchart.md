@@ -40,8 +40,10 @@ flowchart TD
     W -->|Yes| Y[Split into Chunks]
 
     Y --> Z{Content > Max Size?}
-    Z -->|Yes| AA[Use First Chunk]
     Z -->|No| BB[Use Full Content]
+    Z -->|Yes| ZZ{Input Tokens > Max?}
+    ZZ -->|Yes| AA[Use First Chunk]
+    ZZ -->|No| BB[Use Full Content]
 
     AA --> CC[Send to AI API]
     BB --> CC
@@ -131,7 +133,11 @@ The `lgtm.sh` script follows a systematic approach to generate conventional comm
   4. **.gitignore file** - Git ignore patterns
   5. **Default patterns** (lowest priority) - Built-in patterns like `*.log`, `node_modules/*`
 - Filters by included file extensions (e.g., `.js`, `.py`, `.go`)
-- Splits large diffs into manageable chunks based on `LGTM_MAX_CHUNK_SIZE`
+- Smart chunking logic:
+  - Checks content against `LGTM_MAX_CHUNK_SIZE` character limit
+  - Estimates token count and compares against `LGTM_MAX_INPUT_TOKENS`
+  - Only chunks content when either limit is exceeded
+  - Uses first chunk for large diffs while maintaining context
 
 ### 4. **AI API Integration**
 

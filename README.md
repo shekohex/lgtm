@@ -96,8 +96,9 @@ OPTIONS:
     -v, --verbose       Enable verbose output for debugging
     -q, --silent        Suppress all output except the final commit message
     -s, --stdin         Read git diff output from STDIN
-    -t, --max-tokens N  Maximum tokens for AI response (overrides environment)
-    -i, --ignore PATTERN Add ignore pattern (can be used multiple times)
+    -t, --max-tokens N        Maximum tokens for AI response (overrides environment)
+    --max-input-tokens N      Maximum tokens for AI input (overrides environment)
+    -i, --ignore PATTERN      Add ignore pattern (can be used multiple times)
     -h, --help          Show help message
 ```
 
@@ -121,8 +122,8 @@ OPTIONS:
 # Verbose output for debugging
 ./lgtm.sh --verbose --dry-run
 
-# Custom token limit for longer messages
-./lgtm.sh --max-tokens 150 --silent
+# Custom token limits for AI model constraints
+./lgtm.sh --max-tokens 150 --max-input-tokens 4000 --silent
 
 # Override ignore patterns with CLI flags
 ./lgtm.sh --ignore "*.test.js" --ignore "coverage/*" --dry-run
@@ -183,6 +184,7 @@ All configuration is handled through environment variables, following the UNIX p
 | Variable                  | Description                       | Default   |
 | ------------------------- | --------------------------------- | --------- |
 | `LGTM_MAX_CHUNK_SIZE`     | Maximum characters per diff chunk | `4000`    |
+| `LGTM_MAX_INPUT_TOKENS`   | Maximum tokens for AI input       | `8000`    |
 | `LGTM_MAX_TOKENS`         | Maximum tokens for AI response    | `100`     |
 | `LGTM_MODEL`              | AI model to use                   | `gpt-4`   |
 | `LGTM_TEMPERATURE`        | Model creativity (0.0-2.0)        | `0.3`     |
@@ -285,8 +287,9 @@ export LGTM_IGNORE_PATTERNS="*.pyc,__pycache__/*,*.log"
 # Override ignore patterns with CLI flags
 ./lgtm.sh --ignore "*.test.py" --ignore "migrations/*" --dry-run
 
-# Large diff handling
+# Large diff handling with optimized chunking
 export LGTM_MAX_CHUNK_SIZE=8000
+export LGTM_MAX_INPUT_TOKENS=6000
 export LGTM_MAX_TOKENS=200
 
 # Auto-push configuration
