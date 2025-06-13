@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Default configuration
 AUTO_CONFIG=true
+INSTALL_GIT_SUBCOMMAND=true
 
 # Check for required tools
 check_dependencies() {
@@ -80,12 +81,14 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  --no-auto-config    Disable automatic profile modification and print environment
-                      variables to stdout instead
-  -h, --help         Show this help message
+  --no-auto-config        Disable automatic profile modification and print environment
+                         variables to stdout instead
+  --without-git-subcommand  Do not install as a Git subcommand (git-lgtm)
+  -h, --help             Show this help message
 
 Environment variables:
-  LGTM_NO_AUTO_CONFIG    Set to "true" to disable automatic profile modification
+  LGTM_NO_AUTO_CONFIG        Set to "true" to disable automatic profile modification
+  LGTM_NO_GIT_SUBCOMMAND    Set to "true" to disable Git subcommand installation
 EOF
 }
 
@@ -95,6 +98,10 @@ parse_args() {
     case $1 in
       --no-auto-config)
         AUTO_CONFIG=false
+        shift
+        ;;
+      --without-git-subcommand)
+        INSTALL_GIT_SUBCOMMAND=false
         shift
         ;;
       -h|--help)
@@ -109,9 +116,12 @@ parse_args() {
     esac
   done
 
-  # Check environment variable override
+  # Check environment variable overrides
   if [ "${LGTM_NO_AUTO_CONFIG:-false}" = "true" ]; then
     AUTO_CONFIG=false
+  fi
+  if [ "${LGTM_NO_GIT_SUBCOMMAND:-false}" = "true" ]; then
+    INSTALL_GIT_SUBCOMMAND=false
   fi
 }
 
@@ -133,6 +143,13 @@ main() {
 
   # Make executable
   chmod +x "$HOME/.local/bin/lgtm"
+
+  # Install Git subcommand if enabled
+  if [ "$INSTALL_GIT_SUBCOMMAND" = true ]; then
+    echo "Installing Git subcommand..."
+    ln -sf "$HOME/.local/bin/lgtm" "$HOME/.local/bin/git-lgtm"
+    echo "Git subcommand 'git lgtm' installed"
+  fi
 
   # Setup environment
   setup_environment

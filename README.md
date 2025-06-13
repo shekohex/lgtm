@@ -59,26 +59,41 @@ curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bas
 This will:
 
 1. Install LGTM to ~/.local/bin
-2. Add required environment variables to your shell profile (~/.bashrc, ~/.zshrc, or equivalent)
-3. Make the script executable
+2. Install LGTM as a Git subcommand (accessible via `git lgtm`)
+3. Add required environment variables to your shell profile (~/.bashrc, ~/.zshrc, or equivalent)
+4. Make the script executable
+
+You can disable the Git subcommand installation using the `--without-git-subcommand` flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash --without-git-subcommand
+```
 
 ### Manual Configuration Install
 
 If you prefer to manage your shell configuration manually:
 
 ```bash
-# Using CLI flag
+# Using CLI flags
 curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash --no-auto-config
 
-# Or using environment variable
+# Using environment variables
 LGTM_NO_AUTO_CONFIG=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+
+# Without Git subcommand installation
+LGTM_NO_GIT_SUBCOMMAND=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+
+# Disable both auto-config and Git subcommand
+LGTM_NO_AUTO_CONFIG=true LGTM_NO_GIT_SUBCOMMAND=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
 ```
 
 This will:
 
-1. Install LGTM to ~/.local/bin
+1. Install LGTM to ~/.local/bin (and as a Git subcommand by default)
 2. Output the required environment variables to stdout without modifying any files
 3. Let you manually add them to your preferred shell configuration
+
+Note: By default, LGTM is installed both as a standalone command (`lgtm`) and as a Git subcommand (`git lgtm`). You can use either method to run the tool.
 
 ### Manual Installation
 
