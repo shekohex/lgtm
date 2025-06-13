@@ -48,7 +48,41 @@ The tool adheres to the **UNIX philosophy** by accepting input from STDIN, produ
 
 ## Installation
 
-An installation script will be provided to install the tool system-wide. For now, you can use it directly:
+### Quick Install (Automatic Configuration)
+
+To install LGTM with automatic shell configuration:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+```
+
+This will:
+
+1. Install LGTM to ~/.local/bin
+2. Add required environment variables to your shell profile (~/.bashrc, ~/.zshrc, or equivalent)
+3. Make the script executable
+
+### Manual Configuration Install
+
+If you prefer to manage your shell configuration manually:
+
+```bash
+# Using CLI flag
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash --no-auto-config
+
+# Or using environment variable
+LGTM_NO_AUTO_CONFIG=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+```
+
+This will:
+
+1. Install LGTM to ~/.local/bin
+2. Output the required environment variables to stdout without modifying any files
+3. Let you manually add them to your preferred shell configuration
+
+### Manual Installation
+
+For completely manual installation:
 
 ```bash
 # Make executable
