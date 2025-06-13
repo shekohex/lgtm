@@ -27,6 +27,7 @@ fi
 : "${LGTM_TOP_P:="0.25"}"
 : "${LGTM_TIMEOUT:="15"}"
 : "${LGTM_AUTO_PUSH:="false"}"
+: "${LGTM_SYSTEM_MESSAGE:=""}"
 
 # Global variables
 DRY_RUN=false
@@ -92,6 +93,7 @@ OPTIONS:
     --ignore-patterns PATTERNS       Comma-separated ignore patterns (can be overridden by LGTM_IGNORE_PATTERNS)
     --include EXTS                   Include file extensions (can be specified multiple times)
     --include-extensions EXTS        Comma-separated file extensions (can be overridden by LGTM_INCLUDE_EXTENSIONS)
+    --system-message MSG             Custom AI system message (can be overridden by LGTM_SYSTEM_MESSAGE)
 
 ENVIRONMENT VARIABLES:
     LGTM_API_URL           API endpoint URL (required)
@@ -106,6 +108,7 @@ ENVIRONMENT VARIABLES:
     LGTM_AUTO_PUSH         Auto-push after commit (default: false)
     LGTM_IGNORE_PATTERNS   Comma-separated ignore patterns (default: common files)
     LGTM_INCLUDE_EXTENSIONS Comma-separated file extensions to include
+    LGTM_SYSTEM_MESSAGE    Custom AI system message for commit generation
 
 NOTE: Environment variables take precedence over CLI flags when both are provided.
 
@@ -202,7 +205,7 @@ aggregate_patterns() {
 # Parse command line arguments
 parse_args() {
     # Initialize CLI argument variables
-    local cli_api_url="" cli_model="" cli_temperature="" cli_top_p="" cli_max_tokens="" cli_max_input_tokens="" cli_max_chunk_size="" cli_timeout=""
+    local cli_api_url="" cli_model="" cli_temperature="" cli_top_p="" cli_max_tokens="" cli_max_input_tokens="" cli_max_chunk_size="" cli_timeout="" cli_system_message=""
     local cli_ignore_patterns
     local cli_include_extensions
     cli_ignore_patterns=()
@@ -248,6 +251,9 @@ parse_args() {
             --include|--include-extensions)
                 validate_option "$1" "$2"
                 cli_include_extensions+=("$2"); shift 2 ;;
+            --system-message)
+                validate_option "$1" "$2"
+                cli_system_message="$2"; shift 2 ;;
             *)
                 print_error "Unknown option: $1"
                 usage; exit 1 ;;
@@ -274,9 +280,15 @@ parse_args() {
         [[ -n "$aggregated_ignore" ]] && LGTM_IGNORE_PATTERNS="$aggregated_ignore"
     fi
     
-    # Aggregate include patterns
-    if [[ ${#cli_include_extensions[@]} -gt 0 && -z "$LGTM_INCLUDE_EXTENSIONS" ]]; then
-        LGTM_INCLUDE_EXTENSIONS=$(aggregate_patterns cli_include_extensions)
+    # Aggregate include patterns - merge CLI patterns with existing patterns
+    if [[ ${#cli_include_extensions[@]} -gt 0 ]]; then
+        local cli_patterns
+        cli_patterns=$(aggregate_patterns cli_include_extensions)
+        if [[ -n "$LGTM_INCLUDE_EXTENSIONS" ]]; then
+            LGTM_INCLUDE_EXTENSIONS="${LGTM_INCLUDE_EXTENSIONS},${cli_patterns}"
+        else
+            LGTM_INCLUDE_EXTENSIONS="$cli_patterns"
+        fi
     fi
     
     # Apply other CLI values only if environment variables are not set
@@ -289,6 +301,7 @@ parse_args() {
     [[ -z "$LGTM_MAX_INPUT_TOKENS" && -n "$cli_max_input_tokens" ]] && LGTM_MAX_INPUT_TOKENS="$cli_max_input_tokens"
     [[ -z "$LGTM_MAX_CHUNK_SIZE" && -n "$cli_max_chunk_size" ]] && LGTM_MAX_CHUNK_SIZE="$cli_max_chunk_size"
     [[ -z "$LGTM_TIMEOUT" && -n "$cli_timeout" ]] && LGTM_TIMEOUT="$cli_timeout"
+    [[ -z "$LGTM_SYSTEM_MESSAGE" && -n "$cli_system_message" ]] && LGTM_SYSTEM_MESSAGE="$cli_system_message"
     
     # Apply push setting - environment variable takes precedence over CLI flag
     [[ "$LGTM_AUTO_PUSH" == "true" ]] && AUTO_PUSH=true
@@ -333,7 +346,28 @@ should_ignore_file() {
     IFS=',' read -ra ignore_patterns <<< "$LGTM_IGNORE_PATTERNS"
     IFS=',' read -ra include_extensions <<< "$LGTM_INCLUDE_EXTENSIONS"
     
-    # Check ignore patterns
+    # Check if file is in include list (if specified) - include patterns take precedence
+    if [[ -n "$LGTM_INCLUDE_EXTENSIONS" ]]; then
+        for pattern in "${include_extensions[@]}"; do
+            pattern=$(echo "$pattern" | xargs) # trim whitespace
+            
+            # Check direct file/filename match
+            [[ "$file" == $pattern || "$filename" == $pattern ]] && return 1 # should not ignore
+            
+            # Handle glob-like patterns
+            case "$file" in $pattern) return 1 ;; esac
+            case "$filename" in $pattern) return 1 ;; esac
+            
+            # Handle extension matching (for patterns like .md, .js, etc.)
+            if [[ "$pattern" =~ ^\.[a-zA-Z0-9]+$ ]]; then
+                local ext_pattern="${pattern#.}"  # remove leading dot
+                [[ "$extension" == "$ext_pattern" ]] && return 1 # should not ignore
+            fi
+        done
+        return 0 # not in include list, so ignore
+    fi
+    
+    # Check ignore patterns (only if no include patterns specified)
     for pattern in "${ignore_patterns[@]}"; do
         pattern=$(echo "$pattern" | xargs) # trim whitespace
         [[ "$file" == $pattern || "$filename" == $pattern ]] && return 0
@@ -342,15 +376,6 @@ should_ignore_file() {
         case "$file" in $pattern) return 0 ;; esac
         case "$filename" in $pattern) return 0 ;; esac
     done
-    
-    # Check if extension is in include list (if specified)
-    if [[ -n "$LGTM_INCLUDE_EXTENSIONS" ]]; then
-        for ext in "${include_extensions[@]}"; do
-            ext=$(echo "$ext" | xargs | sed 's/^\.//')  # trim whitespace and leading dot
-            [[ "$extension" == "$ext" ]] && return 1 # should not ignore
-        done
-        return 0 # not in include list, so ignore
-    fi
     
     return 1 # don't ignore by default
 }
@@ -378,12 +403,15 @@ filter_git_diff() {
     
     while IFS= read -r line; do
         if [[ "$line" =~ ^diff\ --git\ a/(.+)\ b/(.+)$ ]]; then
+            # Capture the match immediately to avoid corruption
+            local matched_file="${BASH_REMATCH[1]}"
+            
             # Process previous block
             [[ "$in_file_block" == "true" && -n "$current_file" ]] &&
                 process_file_block "$current_file" "$current_block" filtered_diff
             
             # Start new block
-            current_file="${BASH_REMATCH[1]}"
+            current_file="$matched_file"
             current_block="$line"
             in_file_block=true
         elif [[ "$in_file_block" == "true" ]]; then
@@ -484,14 +512,54 @@ split_into_chunks() {
 # Call AI API to generate commit message
 call_ai_api() {
     local content="$1"
-    local system_message="You are an expert software developer who generates conventional commit messages. Based on git diff output, create concise, clear commit messages using the format: type(scope): description
+    # Use custom system message if provided, otherwise use default
+    local system_message
+    if [[ -n "$LGTM_SYSTEM_MESSAGE" ]]; then
+        system_message="$LGTM_SYSTEM_MESSAGE"
+    else
+        system_message="You are an expert software developer who generates conventional commit messages. Based on git diff output, create comprehensive commit messages using the format: type(scope): description
 
 Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
-- Focus on the primary change
-- Keep descriptions under 50 characters when possible
+
+INSTRUCTIONS:
+- Analyze ALL file changes in the diff to understand the complete scope of work
+- Focus on the PRIMARY/MOST IMPORTANT change for the main commit message title
+- Keep the main title under 50 characters when possible
 - Use present tense (add, fix, update, not added, fixed, updated)
 - Omit scope if not clear or applicable
-- Only return the commit message, no explanations"
+- BREAKING CHANGE: a commit that has a footer BREAKING CHANGE:, or appends a ! after the type/scope, introduces a breaking API change (correlating with MAJOR in Semantic Versioning). A BREAKING CHANGE can be part of commits of any type.
+
+COMMIT MESSAGE FORMAT:
+- First line: Concise conventional commit message focusing on the primary change
+- Empty line
+- Body: Add 2-4 bullet points describing other significant changes, improvements, or secondary modifications that complement the main change. Include file-specific details for context.
+- Empty line
+- Footer (Optional): Include any relevant issue numbers, links, or additional context.
+
+EXAMPLES:
+---
+feat: add user authentication system
+
+- Implement JWT token validation middleware
+- Add password hashing utilities
+- Create user registration and login endpoints
+- Update database schema with user table
+
+Closes #123
+---
+fix: resolve memory leak in data processing
+
+- Optimize buffer allocation in parser.js
+- Add proper cleanup in event handlers
+- Update documentation for memory best practices
+---
+chore!: drop support for Node 6
+
+BREAKING CHANGE: use JavaScript features not available in Node 6.
+---
+
+Only return the commit message, body and footer, no explanations or additional text."
+    fi
 
     local response
     local http_code
@@ -548,7 +616,7 @@ Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
     if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
         print_verbose "API Response Body: $(cat "$temp_response")"
         # Extract message from response (adjust based on API format)
-        response=$(jq -r '.choices[0].message.content // .message // .text // .' "$temp_response" 2>/dev/null | head -1)
+        response=$(jq -r '.choices[0].message.content // .message // .text // .' "$temp_response" 2>/dev/null)
         print_verbose "Extracted commit message: $response"
         echo "$response"
     else
@@ -711,8 +779,8 @@ main() {
         exit 1
     }
     
-    # Clean up the commit message
-    commit_message=$(echo "$commit_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -1)
+    # Clean up the commit message (preserve newlines and multi-line structure)
+    commit_message=$(printf '%s' "$commit_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     
     handle_commit "$commit_message"
 }

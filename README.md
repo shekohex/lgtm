@@ -53,7 +53,7 @@ The tool adheres to the **UNIX philosophy** by accepting input from STDIN, produ
 To install LGTM with automatic shell configuration:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s --
 ```
 
 This will:
@@ -66,7 +66,7 @@ This will:
 You can disable the Git subcommand installation using the `--without-git-subcommand` flag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash --without-git-subcommand
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s -- --without-git-subcommand
 ```
 
 ### Manual Configuration Install
@@ -75,16 +75,19 @@ If you prefer to manage your shell configuration manually:
 
 ```bash
 # Using CLI flags
-curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash --no-auto-config
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s -- --no-auto-config
 
 # Using environment variables
-LGTM_NO_AUTO_CONFIG=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+LGTM_NO_AUTO_CONFIG=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s --
 
 # Without Git subcommand installation
-LGTM_NO_GIT_SUBCOMMAND=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s -- --without-git-subcommand
 
-# Disable both auto-config and Git subcommand
-LGTM_NO_AUTO_CONFIG=true LGTM_NO_GIT_SUBCOMMAND=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | bash
+# Using multiple CLI flags
+curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s -- --no-auto-config --without-git-subcommand
+
+# Alternative: using environment variables
+LGTM_NO_AUTO_CONFIG=true LGTM_NO_GIT_SUBCOMMAND=true curl -fsSL https://raw.githubusercontent.com/shekohex/lgtm/main/install.sh | sh -s --
 ```
 
 This will:
